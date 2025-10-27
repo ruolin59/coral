@@ -208,7 +208,7 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
     System.out.println("\nView fooConfiguration schema:");
     System.out.println(viewFooSchema.toString(true));
 
-    // Compare field by field
+    // Compare field by field; all 3 assertEquals fail due to the bug related to nullability
     assertEquals(viewFooSchema.getField("name").schema(), originalFooSchema.getField("name").schema(),
         "name field should match");
     assertEquals(viewFooSchema.getField("urlvalue").schema(), originalFooSchema.getField("urlValue").schema(),
