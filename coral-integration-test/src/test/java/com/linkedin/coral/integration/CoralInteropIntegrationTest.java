@@ -162,13 +162,13 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
       public org.apache.hadoop.hive.metastore.api.Table getTable(String dbName, String tableName) {
         org.apache.hadoop.hive.metastore.api.Table table = baseHmsClient.getTable(dbName, tableName);
 
-        // If the table has avro.schema.literal property, ensure it has AvroSerDe configured
+        // In prod, Iceberg tables often do not have AvroSerDe library set on storage descriptor, but have avro.schema.literal
         if (table != null && table.getParameters() != null
             && table.getParameters().containsKey("avro.schema.literal")) {
-          // Set AvroSerDe on the storage descriptor so Coral can process it
+          // Set AvroSerDe on the storage descriptor to null
           if (table.getSd() != null) {
             table.getSd().getSerdeInfo().setSerializationLib(null);
-            // Also add the avro.schema.literal to SerDe parameters
+            // Add the avro.schema.literal to SerDe parameters
             table.getSd().getSerdeInfo().getParameters().put("avro.schema.literal",
             originalAvroSchemaLiteral);
           }
