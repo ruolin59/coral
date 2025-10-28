@@ -92,14 +92,14 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
   }
 
   @Test
-  public void testArrayWithComplexNestedStructs() throws Exception {
+  public void testArrayAndMapWithSingleElementUnions() throws Exception {
     // This test verifies that both table and view schemas match the original avro.schema.literal
-    // when array items and map values are defined as unions in the base table's avro.schema.literal
+    // when array items and map values are defined as single-element unions in the base table's avro.schema.literal
 
     // Define the Avro schema with:
-    // 1. Array items as a union type: items = [{"type":"record",...}]
-    // 2. Map values as a union type: values = [{"type":"record",...}]
-    // This is the key to reproducing the bug - both are single-element unions
+    // 1. Array items as a single-element union type: items = [{"type":"record",...}]
+    // 2. Map values as a single-element union type: values = [{"type":"record",...}]
+    // This reproduces the bug where single-element unions are not properly extracted
     String originalAvroSchemaLiteral =
         "{\"type\":\"record\",\"name\":\"test_complex_array_table\",\"namespace\":\"com.example.test\",\"fields\":["
             + "{\"name\":\"id\",\"type\":[\"null\",\"long\"],\"default\":null},"
