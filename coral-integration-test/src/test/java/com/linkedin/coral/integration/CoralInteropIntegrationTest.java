@@ -94,10 +94,12 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
   @Test
   public void testArrayWithComplexNestedStructs() throws Exception {
     // This test verifies that both table and view schemas match the original avro.schema.literal
-    // when array items are defined as unions in the base table's avro.schema.literal
+    // when array items and map values are defined as unions in the base table's avro.schema.literal
 
-    // Define the Avro schema with array items as a union type: items = [{"type":"record",...}]
-    // This is the key to reproducing the bug - the array items is a union with single element
+    // Define the Avro schema with:
+    // 1. Array items as a union type: items = [{"type":"record",...}]
+    // 2. Map values as a union type: values = [{"type":"record",...}]
+    // This is the key to reproducing the bug - both are single-element unions
     String originalAvroSchemaLiteral =
         "{\"type\":\"record\",\"name\":\"test_complex_array_table\",\"namespace\":\"com.example.test\",\"fields\":["
             + "{\"name\":\"id\",\"type\":[\"null\",\"long\"],\"default\":null},"
@@ -112,20 +114,27 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
             + "{\"name\":\"name\",\"type\":\"string\",\"doc\":\"The name of the configuration\"},"
             + "{\"name\":\"domain\",\"type\":\"string\",\"doc\":\"The domain value\"}"
             + "]}],\"default\":null,\"doc\":\"Bar configuration details.\"}"
-            + "]}]}],\"default\":null}" + "]}";
+            + "]}]}],\"default\":null},"
+            + "{\"name\":\"metadata\",\"type\":[\"null\",{\"type\":\"map\",\"values\":[{\"type\":\"record\",\"name\":\"MetadataValue\",\"namespace\":\"com.example.data\",\"doc\":\"Metadata value record.\",\"fields\":["
+            + "{\"name\":\"category\",\"type\":\"string\",\"doc\":\"Category of metadata\"},"
+            + "{\"name\":\"priority\",\"type\":\"int\",\"doc\":\"Priority level\"}"
+            + "]}]}],\"default\":null}"
+            + "]}";
 
     // Create an Iceberg table with the Avro schema
     executeSql("CREATE TABLE IF NOT EXISTS iceberg_catalog.default.test_complex_array_table " + "(id BIGINT, "
         + " entity_name STRING, " + " items ARRAY<STRUCT<"
         + "   fooConfiguration: STRUCT<name: STRING, urlValue: STRING, source: STRING>, "
-        + "   barConfiguration: STRUCT<name: STRING, domain: STRING>" + " >>) " + "USING iceberg "
+        + "   barConfiguration: STRUCT<name: STRING, domain: STRING>" + " >>, "
+        + " metadata MAP<STRING, STRUCT<category: STRING, priority: INT>>" + ") " + "USING iceberg "
         + "TBLPROPERTIES ('avro.schema.literal'='" + originalAvroSchemaLiteral + "')");
 
     // Insert test data
     executeSql("INSERT INTO iceberg_catalog.default.test_complex_array_table " + "SELECT 1L, 'EntityA', " + "  ARRAY("
         + "    named_struct("
         + "      'fooConfiguration', named_struct('name', 'Foo-Config-1', 'urlValue', 'https://example.com/foo', 'source', 'https://source.example.com'), "
-        + "      'barConfiguration', CAST(NULL AS STRUCT<name: STRING, domain: STRING>)" + "    )" + "  )");
+        + "      'barConfiguration', CAST(NULL AS STRUCT<name: STRING, domain: STRING>)" + "    )" + "  ), "
+        + "  map('key1', named_struct('category', 'test-category', 'priority', 1))");
 
     // Verify data exists
     executeSql("USE iceberg_catalog");
@@ -208,7 +217,7 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
     System.out.println("\nView fooConfiguration schema:");
     System.out.println(viewFooSchema.toString(true));
 
-    // Compare field by field; all 3 assertEquals fail due to the bug related to nullability
+    // Compare field by field; all 3 assertEquals used to fail due to the bug related to nullability
     assertEquals(viewFooSchema.getField("name").schema(), originalFooSchema.getField("name").schema(),
         "name field should match");
     assertEquals(viewFooSchema.getField("urlvalue").schema(), originalFooSchema.getField("urlValue").schema(),
@@ -217,6 +226,31 @@ public class CoralInteropIntegrationTest extends CoralIntegrationTestBase {
         "source field should match");
 
     System.out.println("\n✓ fooConfiguration fields match!");
+
+    System.out.println("\n--- COMPARING metadata MAP VALUE ---");
+
+    // Navigate to metadata map value in original schema
+    // Path: root -> metadata (union) -> map -> values (union) -> record
+    Schema originalMetadataValueSchema = unwrapUnion(
+        unwrapUnion(originalAvroSchema.getField("metadata").schema()).getValueType());
+
+    // Navigate to metadata map value in view schema
+    Schema viewMetadataValueSchema = unwrapUnion(
+        unwrapUnion(viewAvroSchema.getField("metadata").schema()).getValueType());
+
+    // Compare the metadata value schemas
+    System.out.println("\nOriginal metadata value schema:");
+    System.out.println(originalMetadataValueSchema.toString(true));
+    System.out.println("\nView metadata value schema:");
+    System.out.println(viewMetadataValueSchema.toString(true));
+
+    // Compare field by field; both assertEquals used to fail due to the bug related to nullability
+    assertEquals(viewMetadataValueSchema.getField("category").schema(),
+        originalMetadataValueSchema.getField("category").schema(), "category field should match");
+    assertEquals(viewMetadataValueSchema.getField("priority").schema(),
+        originalMetadataValueSchema.getField("priority").schema(), "priority field should match");
+
+    System.out.println("\n✓ metadata map value fields match!");
 
     // Clean up
     executeSql("DROP VIEW IF EXISTS spark_catalog.default.complex_array_view");
